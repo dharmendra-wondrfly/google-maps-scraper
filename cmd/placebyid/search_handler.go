@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,8 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gosom/google-maps-scraper/gmaps"
-	"github.com/gosom/scrapemate"
-	"github.com/gosom/scrapemate/scrapemateapp"
 )
 
 // ====================================================================
@@ -106,37 +103,6 @@ func respondSearchPage(w http.ResponseWriter, places []*googlePlace, key string,
 	json.NewEncoder(w).Encode(resp)
 }
 
-// ====================================================================
-// searchWriter — collects []*gmaps.Entry from SearchJob results
-// ====================================================================
-
-type searchWriter struct {
-	mu      sync.Mutex
-	entries []*gmaps.Entry
-}
-
-func (sw *searchWriter) Run(_ context.Context, in <-chan scrapemate.Result) error {
-	for result := range in {
-		entries, ok := result.Data.([]*gmaps.Entry)
-		if !ok {
-			// SearchJob returns []*Entry wrapped as []any sometimes — handle both
-			if raw, ok2 := result.Data.([]any); ok2 {
-				for _, v := range raw {
-					if e, ok3 := v.(*gmaps.Entry); ok3 {
-						entries = append(entries, e)
-					}
-				}
-			}
-		}
-		if len(entries) > 0 {
-			sw.mu.Lock()
-			sw.entries = append(sw.entries, entries...)
-			sw.mu.Unlock()
-		}
-	}
-	return nil
-}
-
 // haversineDist returns the great-circle distance in km between two lat/lon points.
 func haversineDist(a, b latLng) float64 {
 	const R = 6371.0
@@ -152,7 +118,7 @@ func haversineDist(a, b latLng) float64 {
 // POST /v1/places:searchText handler
 // ====================================================================
 
-func searchTextHandler(langCode string) http.HandlerFunc {
+func searchTextHandler(eng *httpEngine, langCode string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req searchTextRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TextQuery == "" {
@@ -160,7 +126,7 @@ func searchTextHandler(langCode string) http.HandlerFunc {
 			return
 		}
 
-		// Serve from page-token cache
+		// Serve from page-token cache.
 		if req.PageToken != "" {
 			if key, offset, ok := lookupPageToken(req.PageToken); ok {
 				if v, ok2 := searchResultCache.Load(key); ok2 {
@@ -174,7 +140,7 @@ func searchTextHandler(langCode string) http.HandlerFunc {
 			// token expired or unknown — fall through to fresh search
 		}
 
-		// Build location params
+		// Build location params.
 		params := &gmaps.MapSearchParams{Query: req.TextQuery, Hl: langCode}
 		if req.LocationRestriction != nil {
 			rect := req.LocationRestriction.Rectangle
@@ -185,38 +151,16 @@ func searchTextHandler(langCode string) http.HandlerFunc {
 				Radius:  haversineDist(rect.Low, rect.High) / 2 * 1000, // km → meters
 			}
 		} else {
-			params.Location = gmaps.MapLocation{Lat: 0, Lon: 0, ZoomLvl: 2, Radius: 20_037_000} // half Earth in meters
+			params.Location = gmaps.MapLocation{Lat: 0, Lon: 0, ZoomLvl: 2, Radius: 20_037_000}
 		}
 
-		sw := &searchWriter{}
-		matecfg, err := scrapemateapp.NewConfig(
-			[]scrapemate.ResultWriter{sw},
-			scrapemateapp.WithConcurrency(1),
-			scrapemateapp.WithExitOnInactivity(30*time.Second),
-		)
+		entries, err := eng.scrapeSearch(r.Context(), params)
 		if err != nil {
-			log.Printf("[searchText] config: %v", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		app, err := scrapemateapp.NewScrapeMateApp(matecfg)
-		if err != nil {
-			log.Printf("[searchText] app: %v", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		defer app.Close()
-
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-
-		if err := app.Start(ctx, gmaps.NewSearchJob(params)); err != nil &&
-			err != context.Canceled && err != context.DeadlineExceeded {
-			log.Printf("[searchText] scrape: %v", err)
+			log.Printf("[searchText] scrape error: %v", err)
 		}
 
-		places := make([]*googlePlace, 0, len(sw.entries))
-		for _, e := range sw.entries {
+		places := make([]*googlePlace, 0, len(entries))
+		for _, e := range entries {
 			places = append(places, convertEntryToPlace(e))
 		}
 

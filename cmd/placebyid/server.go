@@ -11,19 +11,27 @@ import (
 	"time"
 )
 
-// runServer wires up the two API handlers and runs the HTTP server.
+// runServer creates the persistent browser engine, wires up handlers, and
+// runs the HTTP server. ReadTimeout/WriteTimeout are 200s to accommodate the
+// NestJS 180s deadline plus network overhead.
 func runServer(port, concurrency int, langCode string, extractEmail, extraReviews bool, proxies string, inactivity time.Duration) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	eng := newHTTPEngine(ctx, concurrency, proxies, inactivity)
+	defer eng.close()
+
 	mux := http.NewServeMux()
-	mux.Handle("GET /v1/places/{placeId}", placeHandler(concurrency, langCode, extractEmail, extraReviews, proxies, inactivity))
-	mux.Handle("POST /v1/places:searchText", searchTextHandler(langCode))
+	mux.Handle("GET /v1/places/{placeId}", placeHandler(eng, langCode, extractEmail, extraReviews))
+	mux.Handle("POST /v1/places:searchText", searchTextHandler(eng, langCode))
 
 	addr := fmt.Sprintf(":%d", port)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       70 * time.Second,
-		WriteTimeout:      70 * time.Second,
+		ReadTimeout:       200 * time.Second,
+		WriteTimeout:      200 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 
@@ -32,9 +40,10 @@ func runServer(port, concurrency int, langCode string, extractEmail, extraReview
 	go func() {
 		<-sigChan
 		log.Println("shutting down server...")
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		srv.Shutdown(ctx) //nolint:errcheck
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutCancel()
+		srv.Shutdown(shutCtx) //nolint:errcheck
+		cancel()
 	}()
 
 	log.Printf("placebyid server listening on %s  (Ctrl+C to stop)", addr)
