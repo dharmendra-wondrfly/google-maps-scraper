@@ -242,8 +242,8 @@ func (e *httpEngine) runCycle(ctx context.Context) error {
 	opts := []func(*scrapemateapp.Config) error{
 		scrapemateapp.WithConcurrency(e.concurrency),
 		// no WithExitOnInactivity — engine runs until context cancelled or crash
-		scrapemateapp.WithJS(scrapemateapp.DisableImages()),
-		scrapemateapp.WithPageReuseLimit(200),
+		scrapemateapp.WithJS(scrapemateapp.DisableImages(), scrapemateapp.WithUA(randomUA())),
+		scrapemateapp.WithPageReuseLimit(20), // rotate contexts every 20 pages to avoid fingerprint buildup
 		scrapemateapp.WithProvider(e.queue),
 	}
 	if e.proxies != "" {
@@ -318,6 +318,7 @@ func (e *httpEngine) scrapeOnce(ctx context.Context, placeID, langCode string, e
 
 	u := buildPlaceURL(placeID)
 	job := gmaps.NewPlaceJob(placeID, langCode, u, extractEmail, extraReviews)
+	job.Job.Timeout = 45 * time.Second // raises Playwright page timeout from default 30s
 
 	if err := e.queue.submit(attemptCtx, job); err != nil {
 		return nil, err
@@ -357,6 +358,7 @@ func (e *httpEngine) scrapeFresh(ctx context.Context, placeID, langCode string, 
 
 	u := buildPlaceURL(placeID)
 	job := gmaps.NewPlaceJob(placeID, langCode, u, extractEmail, extraReviews)
+	job.Job.Timeout = 45 * time.Second // raises Playwright page timeout from default 30s
 
 	attemptCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
 	defer cancel()
@@ -409,11 +411,18 @@ func (e *httpEngine) scrapeSearch(ctx context.Context, params *gmaps.MapSearchPa
 // ─── UA pool ──────────────────────────────────────────────────────────────────
 
 var userAgents = []string{
-	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-	"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+	// Chrome 136 — released April 2025, widely deployed through 2026
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+	// Chrome 135
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+	// Firefox 128 ESR
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0",
+	// Safari 18 on macOS 15
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 15_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
 }
 
 func randomUA() string {

@@ -8,9 +8,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gosom/scrapemate"
+	"github.com/playwright-community/playwright-go"
 
 	"github.com/gosom/google-maps-scraper/exiter"
 )
+
+// stealthScript patches browser signals that Google uses to detect headless Chromium.
+// Injected via AddInitScript so it runs before any page content loads.
+const stealthScript = `(function(){
+  Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
+  Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5]});
+  Object.defineProperty(navigator,'languages',{get:()=>['en-US','en']});
+  if(!window.chrome){window.chrome={runtime:{},app:{}};}
+  const _q=navigator.permissions.query.bind(navigator.permissions);
+  navigator.permissions.query=(p)=>p.name==='notifications'?Promise.resolve({state:Notification.permission}):_q(p);
+})();`
 
 type PlaceJobOptions func(*PlaceJob)
 
@@ -146,7 +158,15 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 func (j *PlaceJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPage) scrapemate.Response {
 	var resp scrapemate.Response
 
-	pageResponse, err := page.Goto(j.GetURL(), scrapemate.WaitUntilNetworkIdle)
+	// Inject stealth patches before the page loads so Google can't detect headless mode.
+	if raw := page.Unwrap(); raw != nil {
+		if pwPage, ok := raw.(playwright.Page); ok {
+			content := stealthScript
+			_ = pwPage.AddInitScript(playwright.Script{Content: &content})
+		}
+	}
+
+	pageResponse, err := page.Goto(j.GetURL(), scrapemate.WaitUntilDOMContentLoaded)
 	if err != nil {
 		resp.Error = err
 
