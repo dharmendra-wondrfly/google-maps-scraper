@@ -381,7 +381,7 @@ func (e *httpEngine) scrapeSearch(ctx context.Context, params *gmaps.MapSearchPa
 	sw := &searchWriter{}
 	opts := []func(*scrapemateapp.Config) error{
 		scrapemateapp.WithConcurrency(1),
-		scrapemateapp.WithExitOnInactivity(30 * time.Second),
+		scrapemateapp.WithExitOnInactivity(15 * time.Second),
 		// no WithJS — SearchJob uses plain HTTP fetcher, not Playwright
 	}
 	if e.proxies != "" {
@@ -398,7 +398,7 @@ func (e *httpEngine) scrapeSearch(ctx context.Context, params *gmaps.MapSearchPa
 	}
 	defer app.Close()
 
-	searchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	searchCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	if err := app.Start(searchCtx, gmaps.NewSearchJob(params)); err != nil &&
