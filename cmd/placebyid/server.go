@@ -22,6 +22,10 @@ func runServer(port, concurrency int, langCode string, extractEmail, extraReview
 	defer eng.close()
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 	mux.Handle("GET /v1/places/{placeId}", placeHandler(eng, langCode, extractEmail, extraReviews))
 	mux.Handle("POST /v1/places:searchText", searchTextHandler(eng, langCode))
 

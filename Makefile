@@ -40,6 +40,15 @@ cross-compile: ## cross compiles the application
 build: ## builds the application (default: playwright)
 	go build -o bin/$(APP_NAME) .
 
+build-placebyid: ## builds the placebyid HTTP API binary
+	go build -o bin/placebyid ./cmd/placebyid/
+
+run-placebyid: build-placebyid ## run placebyid API locally on :3001
+	./bin/placebyid -serve -port 3001 -c 2
+
+docker-placebyid: ## builds production Docker image for placebyid API
+	docker build -f Dockerfile.placebyid -t placebyid:$(VERSION) .
+
 docker: ## builds docker image with playwright (default)
 	docker build -t $(APP_NAME):$(VERSION) .
 

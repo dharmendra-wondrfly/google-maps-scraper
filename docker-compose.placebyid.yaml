@@ -1,0 +1,24 @@
+# Tuned for AWS t2.xlarge (4 vCPU, 16 GiB RAM).
+# Each -c worker runs Chromium. t2 is burstable — if CPU credits run out, drop -c to 2.
+services:
+  placebyid:
+    build:
+      context: .
+      dockerfile: Dockerfile.placebyid
+    image: placebyid:latest
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    command: ["-serve", "-port", "3001", "-c", "3"]
+    deploy:
+      resources:
+        limits:
+          cpus: "3.5"
+          memory: 14G
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    shm_size: "2gb"
