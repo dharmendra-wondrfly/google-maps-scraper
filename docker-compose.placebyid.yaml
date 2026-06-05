@@ -2,10 +2,9 @@
 # Each -c worker runs Chromium. t2 is burstable — if CPU credits run out, drop -c to 2.
 services:
   placebyid:
-    build:
-      context: .
-      dockerfile: Dockerfile.placebyid
-    image: placebyid:latest
+    # Private GHCR: run `docker login ghcr.io` on the server before `docker compose pull`.
+    image: ghcr.io/dowondrfly/placebyid:latest
+    pull_policy: always
     ports:
       - "3001:3001"
     restart: unless-stopped

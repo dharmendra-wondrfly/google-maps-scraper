@@ -1,4 +1,14 @@
-# Default pipeline on push to main: build placebyid image and publish to GHCR.
+# Push to main: test → build image → push to GHCR → deploy on EC2 via SSH.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   EC2_HOST            — public IP or hostname of the t2.xlarge
+#   EC2_USER            — SSH user (e.g. ubuntu or ec2-user)
+#   EC2_SSH_PRIVATE_KEY — full private key (.pem) for that instance
+# Optional:
+#   EC2_PORT            — SSH port (default 22)
+#
+# Server prerequisites: Docker installed, `docker login ghcr.io` done once,
+# security group allows SSH from GitHub Actions (or your office IP if using a runner).
 name: deploy-placebyid
 
 permissions:
@@ -17,6 +27,8 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: placebyid
+  IMAGE: ghcr.io/${{ github.repository_owner }}/placebyid:latest
+  CONTAINER_NAME: placebyid
   GO_VERSION: "1.26.2"
 
 jobs:
@@ -67,3 +79,38 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    name: Deploy to EC2
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Pull image and restart container on EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            IMAGE="${{ env.IMAGE }}"
+            NAME="${{ env.CONTAINER_NAME }}"
+
+            docker pull "$IMAGE"
+
+            docker stop "$NAME" 2>/dev/null || true
+            docker rm "$NAME" 2>/dev/null || true
+
+            docker run -d \
+              --name "$NAME" \
+              -p 3001:3001 \
+              --shm-size=2g \
+              --restart unless-stopped \
+              "$IMAGE"
+
+            docker image prune -f
+            curl -sf http://127.0.0.1:3001/health
+            echo "deploy ok: $IMAGE"
