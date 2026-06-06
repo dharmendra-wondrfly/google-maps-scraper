@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -24,6 +25,7 @@ func runServer(port, concurrency int, langCode string, extractEmail, extraReview
 	mux := http.NewServeMux()
 	mux.Handle("GET /v1/places/{placeId}", placeHandler(eng, langCode, extractEmail, extraReviews))
 	mux.Handle("POST /v1/places:searchText", searchTextHandler(eng, langCode))
+	mux.HandleFunc("GET /build", buildHandler)
 
 	addr := fmt.Sprintf(":%d", port)
 	srv := &http.Server{
@@ -50,4 +52,13 @@ func runServer(port, concurrency int, langCode string, extractEmail, extraReview
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+func buildHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+		"build_time": "3:19 am, Sunday, 7 June 2026 (IST)",
+		"version":    "1.0.0",
+		"status":     "ok",
+	})
 }
