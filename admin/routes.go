@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -67,8 +68,12 @@ func Routes(r chi.Router, appState *AppState, riverUIHandler http.Handler) {
 
 	// Health check endpoint
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"build_time": "11:53 AM, Sunday, 7 June 2026 (IST)",
+			"version":    "1.0.0",
+			"status":     "ok",
+		})
 	})
 
 	// Root redirect
