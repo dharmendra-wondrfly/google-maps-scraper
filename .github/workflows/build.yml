@@ -1,10 +1,10 @@
 name: build
 
-permissions: {}
+permissions:
+  contents: read
 
+# Runs on PRs only. Pushes to main use deploy-placebyid.yml instead.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        go: ['1.26.3']
+        go: ['1.26.2']
 
     steps:
       - name: Check out code
@@ -40,5 +40,7 @@ jobs:
         run: go mod verify
       - name: Go Vulnerability Check
         run: make vuln
-      - name: Go Build
+      - name: Go Build (all packages)
         run: go build -o /dev/null ./...
+      - name: Go Build placebyid
+        run: go build -o /dev/null ./cmd/placebyid/

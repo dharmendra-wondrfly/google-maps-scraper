@@ -23,6 +23,10 @@ func runServer(port, concurrency int, langCode string, extractEmail, extraReview
 	defer eng.close()
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 	mux.Handle("GET /v1/places/{placeId}", placeHandler(eng, langCode, extractEmail, extraReviews))
 	mux.Handle("POST /v1/places:searchText", searchTextHandler(eng, langCode))
 	mux.HandleFunc("GET /build", buildHandler)
@@ -57,7 +61,7 @@ func runServer(port, concurrency int, langCode string, extractEmail, extraReview
 func buildHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
-		"build_time": "3:19 am, Sunday, 7 June 2026 (IST)",
+		"build_time": "3:19 am, Sunday, 7 June 2026 (IST)",
 		"version":    "1.0.0",
 		"status":     "ok",
 	})
